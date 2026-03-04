@@ -1,0 +1,258 @@
+# name: CI
+
+# on:
+#   push:
+#     branches: [ '*' ]
+#   pull_request:
+#   workflow_dispatch:
+#     inputs:
+#       force_publish_module:
+#         description: 'Force publish module (bypass change detection)'
+#         type: boolean
+#         default: false
+#       force_publish_docs:
+#         description: 'Force publish docs (bypass change detection)'
+#         type: boolean
+#         default: false
+
+# permissions:
+#   contents: read
+
+# jobs:
+#   test:
+#     name: Run Tests
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - name: Install PowerShell modules
+#         shell: pwsh
+#         run: |
+#           Set-PSRepository PSGallery -InstallationPolicy Trusted
+#           if (-not (Get-Module -ListAvailable -Name Pester)) {
+#             Install-Module -Name Pester -Force -Scope CurrentUser
+#           }
+#           if (-not (Get-Module -ListAvailable -Name powershell-yaml)) {
+#             Install-Module -Name powershell-yaml -Force -Scope CurrentUser
+#           }
+
+#       - name: Run Pester tests
+#         id: pester
+#         shell: pwsh
+#         run: |
+#           Import-Module Pester
+#           $Config = New-PesterConfiguration
+#           $Config.Run.Path = "./tests"
+#           $Config.Run.Exit = $false
+#           $Config.Run.PassThru = $true
+#           $Config.TestResult.Enabled = $true
+#           $Config.TestResult.OutputPath = "TestResults.xml"
+#           $Config.TestResult.OutputFormat = "JUnitXml"
+#           $Result = Invoke-Pester -Configuration $Config
+          
+#           # Write to Job Summary
+#           $Summary = "## Test Results`n`n"
+#           $Summary += "| ✅ Passed | ❌ Failed | ⏭️ Skipped | Total |`n"
+#           $Summary += "|-----------|-----------|------------|-------|`n"
+#           $Summary += "| $($Result.PassedCount) | $($Result.FailedCount) | $($Result.SkippedCount) | $($Result.TotalCount) |`n"
+          
+#           if ($Result.FailedCount -gt 0) {
+#             $Summary += "`n### Failed Tests`n`n"
+#             foreach ($test in $Result.Failed) {
+#               $Summary += "- **$($test.Name)**`n"
+#               $Summary += "  - $($test.ErrorRecord.Exception.Message)`n"
+#             }
+#           }
+          
+#           $Summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          
+#           if ($Result.FailedCount -gt 0) {
+#             exit 1
+#           }
+
+#       - name: Upload test results
+#         uses: actions/upload-artifact@v6
+#         if: always()
+#         with:
+#           name: test-results
+#           path: TestResults.xml
+
+#   security:
+#     name: Run Security Analysis
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - name: Run PSScriptAnalyzer
+#         shell: pwsh
+#         run: |
+#           Set-PSRepository PSGallery -InstallationPolicy Trusted
+#           Install-Module -Name PSScriptAnalyzer -Force -Scope CurrentUser
+#           $Results = Invoke-ScriptAnalyzer -Path ./src -Recurse -Settings ./PSScriptAnalyzerSettings.ps1 -ReportSummary
+          
+#           $Errors = $Results | Where-Object Severity -eq 'Error'
+#           $Warnings = $Results | Where-Object Severity -eq 'Warning'
+#           $Info = $Results | Where-Object Severity -eq 'Information'
+          
+#           $Summary = "## Security Analysis Results`n`n"
+#           $Summary += "| ❌ Errors | ⚠️ Warnings | ℹ️ Info |`n"
+#           $Summary += "|-----------|-------------|---------|`n"
+#           $Summary += "| $($Errors.Count) | $($Warnings.Count) | $($Info.Count) |`n`n"
+          
+#           # Group by severity and rule
+#           $Grouped = $Results | Group-Object Severity, RuleName | Sort-Object Count -Descending
+#           if ($Grouped) {
+#             $Summary += "| Rule | Count |`n"
+#             $Summary += "|------|-------|`n"
+#             foreach ($g in $Grouped) {
+#               $Severity = ($g.Name -split ', ')[0]
+#               $Rule = ($g.Name -split ', ')[1]
+#               $Icon = switch ($Severity) { 'Error' { '❌' } 'Warning' { '⚠️' } default { 'ℹ️' } }
+#               $Summary += "| $Icon ``$Rule`` | $($g.Count) |`n"
+#             }
+#           }
+          
+#           $Summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+          
+#           # Export results to file
+#           $Results | ConvertTo-Json -Depth 5 | Out-File -FilePath SecurityResults.json
+          
+#           if ($Results) {
+#             $Results | Format-Table
+#             if ($Errors.Count -gt 0) {
+#               Write-Host "Script analysis found errors" -ForegroundColor Red
+#               exit 1
+#             }
+#             if ($Warnings.Count -gt 0) {
+#               Write-Host "Script analysis found warnings" -ForegroundColor Yellow
+#               exit 2
+#             }
+#             Write-Host "Script analysis found informational issues only" -ForegroundColor Cyan
+#           }
+
+#       - name: Upload security results
+#         uses: actions/upload-artifact@v6
+#         if: always()
+#         with:
+#           name: security-results
+#           path: SecurityResults.json
+
+#   docs:
+#     name: Validate Documentation
+#     runs-on: ubuntu-latest
+
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - name: Install Modules
+#         shell: pwsh
+#         run: |
+#           Set-PSRepository PSGallery -InstallationPolicy Trusted
+#           Install-Module -Name Microsoft.PowerShell.PlatyPS -Force -Scope CurrentUser
+#           Install-Module -Name powershell-yaml -Force -Scope CurrentUser
+
+#       - name: Ensure help is up to date
+#         shell: pwsh
+#         run: |
+#           $ErrorActionPreference = 'Continue'
+#           try {
+#             ./docs/.support/scripts/Update-Help.ps1 -ThrowOnChanges
+#             $CmdletCount = (Get-ChildItem -Path ./docs -Filter *.md -Recurse).Count
+#             $Summary = "## Documentation Validation`n`n"
+#             $Summary += "**$CmdletCount cmdlets** up-to-date`n"
+#             $Summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+#           }
+#           catch {
+#             # Get the list of changed files
+#             $ModifiedFiles = git diff --name-only -- docs/
+#             $UntrackedFiles = git ls-files --others --exclude-standard -- docs/
+#             $PendingChanges = @($ModifiedFiles) + @($UntrackedFiles) | Where-Object { $_ }
+            
+#             $Summary = "## Documentation Validation`n`n"
+#             $Summary += "❌ Markdown help is out of sync.`n`n"
+#             $Summary += "### Files needing update:`n`n"
+#             foreach ($file in $PendingChanges) {
+#               $Summary += "- ``$file```n"
+#             }
+#             $Summary += "`nRun ``just help-update`` locally and commit the changes.`n"
+#             $Summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+            
+#             throw $_.Exception.Message
+#           }
+
+#   release-gate:
+#     name: Release Gate
+#     needs: [test, security, docs]
+#     if: github.event.repository.fork == false && github.ref_name == 'main'
+#     runs-on: ubuntu-latest
+#     outputs:
+#       changes_in_docs: ${{ steps.changes.outputs.docs }}
+#       changes_in_src: ${{ steps.changes.outputs.src }}
+#     steps:
+#       - uses: actions/checkout@v6
+#       - name: Detect changes
+#         uses: dorny/paths-filter@v3.0.2
+#         id: changes
+#         with:
+#           filters: |
+#             docs:
+#               - 'docs/**'
+#             src:
+#               - 'src/**'
+#       - run: echo "All checks passed, proceeding with deployment"
+
+#   publish-module:
+#     name: Publish Module
+#     needs: release-gate
+#     if: needs.release-gate.outputs.changes_in_src == 'true' || inputs.force_publish_module == true
+#     runs-on: ubuntu-latest
+#     environment:
+#       name: PowerShell Gallery
+#       url: https://www.powershellgallery.com/packages/HomeLabFunctions
+
+#     steps:
+#       - uses: actions/checkout@v6
+
+#       - name: Install PlatyPS
+#         shell: pwsh
+#         run: |
+#           Set-PSRepository PSGallery -InstallationPolicy Trusted
+#           Install-Module -Name Microsoft.PowerShell.PlatyPS -Force -Scope CurrentUser
+
+#       - name: Export MAML help
+#         shell: pwsh
+#         run: ./docs/.support/scripts/Export-Help.ps1
+
+#       - name: Publish PowerShell Module
+#         uses: rnebular/publish-powershell@v1
+#         with:
+#           ApiKey: ${{ secrets.PSGALLERY_API_KEY }}
+
+#   # publish-docs:
+#   #   name: Publish Documentation
+#   #   needs: release-gate
+#   #   if: needs.release-gate.outputs.changes_in_docs == 'true' || inputs.force_publish_docs == true
+#   #   runs-on: ubuntu-latest
+#   #   permissions:
+#   #     pages: write
+#   #     id-token: write
+#   #   environment:
+#   #     name: github-pages
+#   #     url: ${{ steps.deployment.outputs.page_url }}
+
+#   #   steps:
+#   #     - uses: actions/checkout@v6
+
+#   #     - name: Setup Pages
+#   #       uses: actions/configure-pages@v5
+
+#   #     - name: Upload artifact
+#   #       uses: actions/upload-pages-artifact@v3
+#   #       with:
+#   #         path: docs
+
+#   #     - name: Deploy to GitHub Pages
+#   #       id: deployment
+#   #       uses: actions/deploy-pages@v4
