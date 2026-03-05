@@ -46,7 +46,7 @@ function Update-MyRouterDNSRecords {
     )
 
     # get public IP
-    $external_ip = (Invoke-WebRequest myexternalip.com/raw).content
+    $external_ip = (Invoke-WebRequest -UseBasicParsing -Uri "http://myexternalip.com/raw").content
 
     $records_updated =@()
 
