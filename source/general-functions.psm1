@@ -47,3 +47,27 @@ function Write-EventLogEntry {
     $logTxt = "$time_stamp == Logging: "+"$logTxt"
     Write-EventLog -LogName $logName -Source $logSource -EventID $eventId -EntryType Information -Message $logTxt
 }
+
+Function Invoke-LogRotation {
+    # Log rotation function. Will rename specified log file with a timestamp version.
+    # The variable $log_file should be the full path to the log file to rotate.
+
+    param(
+        [Parameter(Mandatory=$true)]
+        [String]
+        $logFile
+    )
+
+    if (Test-Path -Path $logFile) {
+        $time_stamp = Get-Date -Format "yyyy-MM-dd"
+        $new_log_file = "$($logFile)_$time_stamp"
+        try {
+            Rename-Item -Path $logFile -NewName $new_log_file
+        } catch {
+            Write-Output "Error rotating log file: $logFile. Error: $_"
+        }
+        
+    } else {
+        Write-Output "Log file $logFile not found, skipping log rotation."
+    }
+}
