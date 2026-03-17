@@ -59,7 +59,7 @@ Function Invoke-LogRotation {
     )
 
     if (Test-Path -Path $logFile) {
-        $time_stamp = Get-Date -Format "yyyy-MM-dd"
+        $time_stamp = Get-Date -Format "yyyy-MM-dd-HH-mm"
         $new_log_file = "$time_stamp-$($logFile)"
         try {
             Rename-Item -Path $logFile -NewName $new_log_file
