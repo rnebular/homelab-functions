@@ -63,6 +63,8 @@ Function Invoke-LogRotation {
         $new_log_file = "$time_stamp-$($logFile)"
         try {
             Rename-Item -Path $logFile -NewName $new_log_file
+            New-Item -Path "$logFile" -ItemType File
+            Write-Output "Log file $logFile rotated successfully."
         } catch {
             Write-Output "Error rotating log file: $logFile. Error: $_"
         }
