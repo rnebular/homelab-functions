@@ -34,3 +34,38 @@ function Send-GmailNotification {
         Write-Output "Failed to send email: $_"
     }
 }
+
+# function to send a log message to graylog using the GELF format over UDP
+# usage example:
+# Send-GraylogGelfMessage -Message "This is a test GELF message from PowerShell." -Level "3" -AdditionalFields @{ "environment" = "test"; "application" = "MyApp" }
+function Send-GraylogGelfMessage {
+    param(
+        [string]$GraylogHost,
+        [int]$Port = 12201,
+        [string]$Message,
+        [string]$Level = "6",  # 0=Emergency, 1=Alert, 2=Critical, 3=Error, 4=Warning, 5=Notice, 6=Info, 7=Debug
+        [hashtable]$AdditionalFields = @{}
+    )
+
+    $gelfMessage = @{
+        version       = "1.1"
+        host          = $env:COMPUTERNAME
+        short_message = $Message
+        timestamp     = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+        level         = $Level
+    }
+
+    # Add custom fields (must be prefixed with _)
+    foreach ($key in $AdditionalFields.Keys) {
+        $gelfMessage["_$key"] = $AdditionalFields[$key]
+    }
+
+    $json = $gelfMessage | ConvertTo-Json -Compress
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+
+    $udpClient = New-Object System.Net.Sockets.UdpClient
+    $udpClient.Send($bytes, $bytes.Length, $GraylogHost, $Port) | Out-Null
+    $udpClient.Close()
+}
+
+# end of line
