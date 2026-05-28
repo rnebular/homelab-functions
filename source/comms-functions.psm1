@@ -37,7 +37,7 @@ function Send-GmailNotification {
 
 # function to send a log message to graylog using the GELF format over UDP
 # usage example:
-# Send-GraylogGelfMessage -Message "This is a test GELF message from PowerShell." -Level "3" -AdditionalFields @{ "environment" = "test"; "application" = "MyApp" }
+# Send-GraylogGelfMessage -Message "This is a test GELF message from PowerShell." -Level "6" -AdditionalFields @{ "environment" = "test"; "application" = "MyApp" } -GraylogHost "graylog.example.com" -Port 12201
 function Send-GraylogGelfMessage {
     param(
         [string]$GraylogHost,
