@@ -42,11 +42,11 @@ function Update-MyRouterDNSRecords {
         $ZoneName,
         [Parameter(Mandatory=$true)]
         [String[]]
-        $RecordNames
+        $RecordNames,
+        [Parameter(Mandatory=$false)]
+        [String]
+        $external_ip = (Get-MyExternalIP)
     )
-
-    # get public IP
-    $external_ip = (Invoke-WebRequest -UseBasicParsing -Uri "http://myexternalip.com/raw").content
 
     $records_updated =@()
 
